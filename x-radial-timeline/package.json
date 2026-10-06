@@ -1,0 +1,14 @@
+{
+  "name": "x-radial-timeline",
+  "private": true,
+  "type": "module",
+  "description": "Radial 52-week posting timeline for an X handle (Atlas theme): HTML, PNG and MP4.",
+  "scripts": {
+    "html": "node scripts/render-html.mjs",
+    "still": "node scripts/render-video.mjs --still",
+    "video": "node scripts/render-video.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.62.1"
+  }
+}

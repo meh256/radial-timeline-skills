@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>__TITLE__</title>
+<style>
+  /*__FONTS__*/
+  :root {
+    /* Atlas tokens */
+    --paper: #fbfaf7; --bg-alt: #f2eee6; --rule: #e5dfd0; --rule-soft: #efeae0;
+    --ink: #0e1525; --ink-soft: #363d4e; --ink-muted: #8a8576;
+    --core: #0e1525; --core-text: #fbfaf7; --core-muted: #a9a596;
+    --blue: #1f46ff;
+    --c-work: #1f46ff;      /* full-time roles */
+    --c-side: #c7d2ff;      /* part-time, advisory, contract: a lighter step of the same hue (de-emphasis) */
+    --c-edu: #c99a3d;       /* education */
+    --c-loc-1: #d85a2a; --c-loc-2: #8b3fa0; --c-loc-3: #1f8a70; --c-loc-4: #c99a3d; /* places lived (validated set) */
+    --sans: "Geist", -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --mono: "Geist Mono", ui-monospace, Menlo, monospace;
+  }
+  :root[data-theme="ink"] {
+    --paper: #0e1525; --bg-alt: #161e30; --rule: #2a3142; --rule-soft: #1d2538;
+    --ink: #fbfaf7; --ink-soft: #d9d4c7; --ink-muted: #8a8576;
+    --core: #fbfaf7; --core-text: #0e1525; --core-muted: #6b6a62;
+    --c-work: #4f68f0; --c-side: #2d4291; --c-edu: #b98b36;
+    --c-loc-1: #cf5526; --c-loc-2: #9a52ae; --c-loc-3: #1f8a70; --c-loc-4: #b98b36;
+  }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); }
+  body { display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 0 16px 48px; box-sizing: border-box; }
+  #stage { width: min(100vw, 1200px); aspect-ratio: 1; position: relative; }
+  #stage svg { width: 100%; height: 100%; display: block; }
+  svg text { font-family: var(--sans); fill: var(--ink); }
+  svg .mono { font-family: var(--mono); }
+  svg .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; fill: var(--blue); }
+  svg .muted { fill: var(--ink-muted); }
+  svg .soft { fill: var(--ink-soft); }
+  svg .arc-label { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; }
+  .hit { fill: transparent; cursor: default; }
+  .hit:focus { outline: none; }
+  #tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--paper); font: 12px/1.45 var(--sans); padding: 10px 12px; border-radius: 6px; max-width: 280px; opacity: 0; transition: opacity 120ms; box-shadow: 0 6px 20px rgba(14,21,37,.18); }
+  #tip b { font-weight: 600; }
+  #tip .m { font-family: var(--mono); font-size: 11px; opacity: .8; }
+  details { width: min(100vw - 32px, 1200px); font-size: 13px; color: var(--ink-soft); }
+  summary { cursor: pointer; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-muted); }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-muted); font-weight: 500; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="tip" role="status"></div></div>
+<details><summary>Data table · roles, schools, places</summary><div id="table"></div></details>
+<script>
+const DATA = __DATA__;
+const IMAGES = __IMAGES__;
+const OPTIONS = __OPTIONS__;
+(function () {
+  const Q = new URLSearchParams(location.search);
+  if (Q.get('theme')) document.documentElement.dataset.theme = Q.get('theme');
+
+  // ---------- helpers ----------
+  const S = 1200, CX = 600, CY = 600, GAP = 22;
+  const rad = (d) => (d * Math.PI) / 180;
+  const pt = (r, a) => [CX + r * Math.cos(rad(a)), CY + r * Math.sin(rad(a))];
+  const f2 = (n) => n.toFixed(2);
+  const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+  const clamp01 = (x) => Math.min(1, Math.max(0, x));
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const now = new Date(DATA.collectedAt || Date.now());
+  const NOW = now.getUTCFullYear() + (now.getUTCMonth() + 0.5) / 12;        // decimal years
+  const ym = (s, endOfYear) => { if (!s) return null; const [y, m] = s.split('-').map(Number); return y + ((endOfYear ? 12 : m) - 0.5) / 12; };
+  const yrs = (a, b) => Math.max(0, b - a);
+  const fmtRange = (r) => { const a = r.start ? (r.startMonthKnown ? MON[+r.start.slice(5) - 1] + ' ' : '') + r.start.slice(0, 4) : '?'; const b = r.end ? (r.endMonthKnown ? MON[+r.end.slice(5) - 1] + ' ' : '') + r.end.slice(0, 4) : 'now'; return a + ' – ' + b; };
+  const fmtYrs = (y) => (y >= 1 ? (Math.round(y * 10) / 10).toString().replace(/\.0$/, '') + ' yr' + (y >= 1.95 ? 's' : '') : Math.max(1, Math.round(y * 12)) + ' mo');
+  const sector = (r0, r1, a0, a1) => { a1 = Math.max(a1, a0 + 0.05); const [x0, y0] = pt(r1, a0), [x1, y1] = pt(r1, a1), [x2, y2] = pt(r0, a1), [x3, y3] = pt(r0, a0); const big = a1 - a0 > 180 ? 1 : 0; return `M${f2(x0)} ${f2(y0)}A${r1} ${r1} 0 ${big} 1 ${f2(x1)} ${f2(y1)}L${f2(x2)} ${f2(y2)}A${r0} ${r0} 0 ${big} 0 ${f2(x3)} ${f2(y3)}Z`; };
+  const arcPath = (r, a0, a1, upright) => { // text path along radius r; reversed in the bottom half so labels read upright
+    const big = a1 - a0 > 180 ? 1 : 0; if (upright) { const [x0, y0] = pt(r, a0), [x1, y1] = pt(r, a1); return `M${f2(x0)} ${f2(y0)}A${r} ${r} 0 ${big} 1 ${f2(x1)} ${f2(y1)}`; }
+    const [x0, y0] = pt(r, a1), [x1, y1] = pt(r, a0); return `M${f2(x0)} ${f2(y0)}A${r} ${r} 0 ${big} 0 ${f2(x1)} ${f2(y1)}`; };
+  const initials = (s) => (s || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  const SIDE = /part-time|contract|freelance|self-employed|volunteer|internship|seasonal/i;
+  const SIDE_TITLE = /advisor|advisory|board|mentor|fellow|partner \(|angel|investor|consultant|investment committee|limited partner|\bLP\b|venture partner|scout/i;
+
+  // ---------- data prep ----------
+  const P = DATA.profile || {};
+  const roles = [];
+  DATA.experience.forEach((e, ci) => e.roles.forEach((r) => { if (!r.start) return; const t0 = ym(r.start), t1 = r.end ? ym(r.end, !r.endMonthKnown) : NOW; roles.push({ ...r, company: e.company, logo: e.logo?.src || null, ci, t0, t1: Math.max(t1, t0 + 1 / 12), side: SIDE.test(r.type || '') || SIDE_TITLE.test(r.title || '') }); }));
+  roles.sort((a, b) => a.t0 - b.t0 || b.t1 - a.t1);
+  const edu = DATA.education.filter((e) => e.start).map((e) => ({ ...e, t0: ym(e.start), t1: e.end ? ym(e.end, !e.endMonthKnown) : NOW }));
+  const eduUndated = DATA.education.filter((e) => !e.start);
+  const YEARS = Q.has('years') ? Q.get('years') : (OPTIONS.years ?? 15);           // 'all' or a number of years back from now
+  const earliest = Math.floor(Math.min(...roles.map((r) => r.t0), ...edu.map((e) => e.t0), NOW - 1));
+  const T0 = YEARS === 'all' ? earliest : Math.max(earliest, Math.floor(NOW - +YEARS) + 1);
+  const T1 = NOW;
+  const windowed = YEARS !== 'all' && T0 > earliest;
+  // anything that ends before the window is listed, not drawn; anything that starts before it is clipped at the window edge
+  const earlierRoles = roles.filter((r) => r.t1 <= T0), earlierEdu = edu.filter((e) => e.t1 <= T0);
+  const inWin = (x) => x.t1 > T0;
+  roles.forEach((r) => (r.clipped = r.t0 < T0 && r.t1 > T0));
+  edu.forEach((e) => (e.clipped = e.t0 < T0 && e.t1 > T0));
+  const SWEEP = 360 - GAP;
+  const ang = (t) => -90 + GAP / 2 + ((Math.min(Math.max(t, T0), T1) - T0) / (T1 - T0)) * SWEEP;
+  // lanes: greedy interval packing, primary roles first, so concurrent roles stack outward
+  const lanes = [];
+  for (const r of [...roles].filter(inWin).sort((a, b) => (a.side - b.side) || a.t0 - b.t0)) { let li = lanes.findIndex((l) => l.every((o) => o.t1 <= r.t0 + 1 / 24 || o.t0 >= r.t1 - 1 / 24)); if (li < 0) { lanes.push([]); li = lanes.length - 1; } lanes[li].push(r); r.lane = li; }
+  const NL = Math.min(lanes.length, 5);
+  roles.forEach((r) => { if (r.lane == null) r.lane = 0; r.lane = Math.min(r.lane, NL - 1); });
+  // places lived: one dominant place per period, from role locations (the full-time role wins, else the longest
+  // active role with a location); country-only names are dropped; the profile location fills current roles that have none
+  const COUNTRY = /^(United States|USA|US|United Kingdom|UK|England|Canada|India|Germany|France|Australia|Pakistan|Netherlands|Spain|Italy|Brazil|Mexico|Japan|China|Singapore|Ireland|Israel|Sweden|Switzerland|Europe|EMEA|APAC|Remote)$/i;
+  const placeOf = (s) => { if (!s) return null; let k = s.replace(/,?\s*(United States|USA|US)$/i, '').replace(/\s+(Bay\s+)?Area$/i, '').replace(/\s+Metropolitan$/i, '').replace(/^Greater\s+/i, '').replace(/^San Francisco Bay$/i, 'San Francisco').replace(/^New York City$/i, 'New York').trim(); return !k || COUNTRY.test(k) ? null : k; };
+  const profilePlace = placeOf(P.location);
+  const located = roles.map((r) => ({ ...r, place: placeOf(r.location) || (!r.end && profilePlace ? profilePlace : null) })).filter((r) => r.place);
+  const cuts = [...new Set(located.flatMap((r) => [Math.max(r.t0, T0), r.t1]).filter((t) => t >= T0))].sort((a, b) => a - b);
+  const segs = [];
+  for (let i = 0; i < cuts.length - 1; i++) { const a = cuts[i], b = cuts[i + 1]; const act = located.filter((r) => r.t0 <= a + 1e-6 && r.t1 >= b - 1e-6); if (!act.length) continue; act.sort((x, y) => (x.side - y.side) || ((y.t1 - y.t0) - (x.t1 - x.t0))); const pl = act[0].place; if (segs.length && segs[segs.length - 1].place === pl && Math.abs(segs[segs.length - 1].b - a) < 1e-6) segs[segs.length - 1].b = b; else segs.push({ place: pl, a, b }); }
+  const byPlace = new Map(); for (const sg of segs) { const p = byPlace.get(sg.place) || { place: sg.place, spans: [], years: 0 }; p.spans.push([sg.a, sg.b]); p.years += sg.b - sg.a; byPlace.set(sg.place, p); }
+  const ranked = [...byPlace.values()].sort((a, b) => b.years - a.years);
+  ranked.forEach((p, i) => { p.color = i < 4 ? `var(--c-loc-${i + 1})` : 'var(--ink-muted)'; p.other = i >= 4; });
+  const places = ranked.sort((a, b) => a.spans[0][0] - b.spans[0][0]);
+  const shownRoles = roles.filter(inWin), shownEdu = edu.filter(inWin);
+  const companies = new Set(shownRoles.map((r) => r.company));
+  const spanYears = T1 - T0;
+  const workYears = (() => { const iv = shownRoles.filter((r) => !r.side).map((r) => [Math.max(r.t0, T0), r.t1]).sort((a, b) => a[0] - b[0]); let t = 0, cur = null; for (const [a, b] of iv) { if (!cur || a > cur[1]) { if (cur) t += cur[1] - cur[0]; cur = [a, b]; } else cur[1] = Math.max(cur[1], b); } if (cur) t += cur[1] - cur[0]; return t; })();
+
+  // ---------- geometry ----------
+  const R = { yearIn: 150, yearOut: 174, eduIn: 186, eduOut: 214 };
+  const LANE_H = 30, LANE_GAP = 6;
+  const laneR = (i) => [R.eduOut + 14 + i * (LANE_H + LANE_GAP), R.eduOut + 14 + i * (LANE_H + LANE_GAP) + LANE_H];
+  const workOut = laneR(NL - 1)[1];
+  const hasPlaces = places.length > 0;
+  const R_loc = [workOut + 14, workOut + 14 + 22];
+  const outerR = hasPlaces ? R_loc[1] : workOut;
+  const years = []; for (let y = Math.ceil(T0); y <= Math.floor(T1); y++) years.push(y);
+  const labelEvery = Math.max(1, Math.ceil(years.length / 16));
+
+  // ---------- timeline ----------
+  const T = { intro: [0, 0.1], sweep: [0.1, 0.78], outro: [0.8, 0.95] };
+  const stage = document.getElementById('stage');
+  let p = 1;
+  function render() {
+    const intro = ease((p - T.intro[0]) / (T.intro[1] - T.intro[0]));
+    const outro = ease((p - T.outro[0]) / (T.outro[1] - T.outro[0]));
+    const sweepT = T0 + clamp01((p - T.sweep[0]) / (T.sweep[1] - T.sweep[0])) * (T1 - T0);   // time reached by the sweep
+    const front = ang(sweepT);
+    const o = [];
+    o.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" role="img" aria-label="${esc(P.name)} career timeline">`);
+    o.push(`<defs><clipPath id="av"><circle cx="${CX}" cy="${CY - 38}" r="42"/></clipPath>`);
+    // logo clip paths are per-logo circles, generated inline below
+    o.push(`</defs><rect width="${S}" height="${S}" fill="var(--paper)"/>`);
+
+    // year ring + spokes
+    o.push(`<g opacity="${f2(intro)}">`);
+    o.push(`<path d="${sector(R.yearIn, R.yearOut, ang(T0), ang(T1))}" fill="var(--bg-alt)"/>`);
+    for (const y of years) { const a = ang(y); const [x0, y0] = pt(R.yearIn, a), [x1, y1] = pt(outerR + 6, a); const major = (y - years[0]) % labelEvery === 0;
+      o.push(`<line x1="${f2(x0)}" y1="${f2(y0)}" x2="${f2(x1)}" y2="${f2(y1)}" stroke="${major ? 'var(--rule)' : 'var(--rule-soft)'}" stroke-width="1" opacity="${f2(clamp01((front - a) / 4) )}"/>`);
+      if (major) { const am = a + Math.min(labelEvery, 1) * (SWEEP / (T1 - T0)) / 2; const [lx, ly] = pt((R.yearIn + R.yearOut) / 2, am); const flip = am > 0 && am < 180; o.push(`<text class="mono soft" font-size="10" letter-spacing="0.08em" text-anchor="middle" dominant-baseline="central" transform="translate(${f2(lx)} ${f2(ly)}) rotate(${f2(am + 90 + (flip ? 180 : 0))})" opacity="${f2(clamp01((front - a) / 6))}">${y}</text>`); } }
+    o.push(`<circle cx="${CX}" cy="${CY}" r="${outerR + 8}" fill="none" stroke="var(--rule-soft)" stroke-width="1"/>`);
+    o.push(`</g>`);
+
+    // arc label helper: the logo sits at the start of the arc; the label is centred in the remaining length
+    const LOGO_PX = 40;
+    const arcText = (id, rMid, a0, full, txt, fill) => { const len = rad(full - a0) * rMid; const need = txt.length * 6.6; if (len - LOGO_PX - 14 < need) return ''; const aStart = a0 + (LOGO_PX / rMid) / rad(1); const mid = (aStart + full) / 2, upright = !(mid > 0 && mid < 180); return `<defs><path id="${id}" d="${arcPath(rMid + (upright ? -3.5 : 3.5), aStart, full, upright)}"/></defs><text class="arc-label" style="fill:${fill}"><textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(txt)}</textPath></text>`; };
+    // education arcs
+    const logos = [];
+    edu.forEach((e, i) => { if (!inWin(e)) return; const a0 = ang(e.t0), a1 = Math.min(ang(e.t1), front); if (a1 <= a0) return; const full = ang(e.t1);
+      o.push(`<path class="arc" data-k="e${i}" d="${sector(R.eduIn, R.eduOut, a0, a1)}" fill="var(--c-edu)"/>`);
+      if (front >= full - 0.5) { const rMid = (R.eduIn + R.eduOut) / 2; const arcLen = rad(full - a0) * rMid; logos.push({ r: rMid, a: a0 + (20 / rMid) / rad(1), img: e.logo?.src ? IMAGES[e.logo.src] : null, label: e.school, small: true, fits: arcLen > 40 });
+        o.push(arcText(`tp-e${i}`, rMid, a0, full, e.school.toUpperCase(), '#fff')); } });
+
+    // experience arcs
+    roles.forEach((r, i) => { if (!inWin(r)) return; const [r0, r1] = laneR(r.lane); const a0 = ang(r.t0), full = ang(r.t1), a1 = Math.min(full, front); if (a1 <= a0) return;
+      o.push(`<path class="arc" data-k="r${i}" d="${sector(r0, r1, a0, a1)}" fill="${r.side ? 'var(--c-side)' : 'var(--c-work)'}"/>`);
+      if (front >= full - 0.5) { const rMid = (r0 + r1) / 2; const arcLen = rad(full - a0) * rMid;
+        logos.push({ r: rMid, a: a0 + (20 / rMid) / rad(1), img: r.logo ? IMAGES[r.logo] : null, label: r.company, small: true, fits: arcLen > 40 });
+        o.push(arcText(`tp-r${i}`, rMid, a0, full, r.company.toUpperCase(), r.side ? 'var(--ink)' : '#fff')); } });
+
+    // places lived (outer ring)
+    if (hasPlaces) places.forEach((pl, i) => pl.spans.forEach(([ta, tb], j) => { const a0 = ang(ta), full = ang(tb), a1 = Math.min(full, front); if (a1 <= a0) return;
+      o.push(`<path class="arc" data-k="p${i}-${j}" d="${sector(R_loc[0], R_loc[1], a0, a1)}" fill="${pl.color}"/>`);
+      const arcLen = rad(full - a0) * (R_loc[0] + R_loc[1]) / 2; const txt = pl.place.toUpperCase(); if (front >= full - 0.5 && arcLen > txt.length * 6.6 + 16) { const mid = (a0 + full) / 2, upright = !(mid > 0 && mid < 180), id = `tp-p${i}-${j}`; o.push(`<defs><path id="${id}" d="${arcPath((R_loc[0] + R_loc[1]) / 2 + (upright ? -3.5 : 3.5), a0, full, upright)}"/></defs><text class="arc-label" style="fill:#fff"><textPath href="#${id}" startOffset="50%" text-anchor="middle">${esc(txt)}</textPath></text>`); } }));
+
+    // logos (circular, with a paper ring), drawn after the arcs so they sit on top
+    logos.forEach((l, i) => { const rr = l.small ? 11 : 12; const [x, y] = pt(l.r, l.a); if (l.small && !l.fits) return;
+      o.push(`<circle cx="${f2(x)}" cy="${f2(y)}" r="${rr + 2}" fill="var(--paper)"/>`);
+      if (l.img) o.push(`<clipPath id="lc${i}"><circle cx="${f2(x)}" cy="${f2(y)}" r="${rr}"/></clipPath><image href="${l.img}" x="${f2(x - rr)}" y="${f2(y - rr)}" width="${rr * 2}" height="${rr * 2}" clip-path="url(#lc${i})" preserveAspectRatio="xMidYMid slice"/>`);
+      else o.push(`<circle cx="${f2(x)}" cy="${f2(y)}" r="${rr}" fill="var(--bg-alt)"/><text x="${f2(x)}" y="${f2(y + 3.5)}" font-size="9" font-weight="600" text-anchor="middle" class="soft">${esc(initials(l.label))}</text>`); });
+
+    // sweep hand
+    if (p > T.sweep[0] && p < T.sweep[1] + 0.03) { const [x0, y0] = pt(R.yearIn - 6, front), [x1, y1] = pt(outerR + 14, front); o.push(`<line x1="${f2(x0)}" y1="${f2(y0)}" x2="${f2(x1)}" y2="${f2(y1)}" stroke="var(--blue)" stroke-width="1" opacity="${f2(clamp01((T.sweep[1] + 0.03 - p) / 0.04))}"/>`); }
+
+    // longest roles: a compact right-aligned block above the source line (outside the chart, never collides)
+    o.push(`<g opacity="${f2(outro)}">`);
+    const top = [...shownRoles].filter((r) => !r.side).sort((a, b) => (b.t1 - b.t0) - (a.t1 - a.t0)).slice(0, 3);
+    o.push(`<text class="mono muted" x="1152" y="1052" font-size="10.5" letter-spacing="0.12em" text-anchor="end">LONGEST ROLES</text>`);
+    top.forEach((r, i) => { const t = r.title.length > 38 ? r.title.slice(0, 36) + '…' : r.title; o.push(`<text x="1152" y="${1074 + i * 20}" font-size="12.5" text-anchor="end"><tspan font-weight="600">${esc(t)}</tspan><tspan class="muted"> · ${esc(r.company)} · ${esc(fmtRange(r))} · ${fmtYrs(r.t1 - r.t0)}</tspan></text>`); });
+    o.push(`</g>`);
+
+    // core
+    o.push(`<g opacity="${f2(intro)}"><circle cx="${CX}" cy="${CY}" r="112" fill="var(--core)"/>`);
+    if (IMAGES.avatar) o.push(`<image href="${IMAGES.avatar}" x="${CX - 42}" y="${CY - 80}" width="84" height="84" clip-path="url(#av)" preserveAspectRatio="xMidYMid slice"/>`);
+    else o.push(`<circle cx="${CX}" cy="${CY - 38}" r="42" fill="var(--blue)"/><text x="${CX}" y="${CY - 28}" font-size="30" font-weight="600" text-anchor="middle" style="fill:#fff">${esc(initials(P.name))}</text>`);
+    o.push(`<text x="${CX}" y="${CY + 30}" font-size="18" font-weight="600" text-anchor="middle" style="fill:var(--core-text)">${esc(P.name)}</text>`);
+    o.push(`<text class="mono" x="${CX}" y="${CY + 52}" font-size="10" letter-spacing="0.14em" text-anchor="middle" style="fill:var(--core-muted)">${Math.round(spanYears * clamp01((p - 0.1) / 0.68))} YEARS · ${shownRoles.length} ROLES</text>`);
+    o.push(`<text class="mono" x="${CX}" y="${CY + 70}" font-size="10" letter-spacing="0.14em" text-anchor="middle" style="fill:var(--core-muted)">${Math.floor(T0)} → ${now.getUTCFullYear()}</text></g>`);
+
+    // corners
+    o.push(`<g opacity="${f2(intro)}">`);
+    o.push(`<text class="eyebrow" x="48" y="64">LinkedIn · ${windowed ? 'last ' + YEARS + ' years' : 'career timeline'}</text>`);
+    o.push(`<text x="48" y="104" font-size="34" font-weight="600" letter-spacing="-0.02em">${esc(P.name)}</text>`);
+    o.push(`<text class="muted" x="48" y="130" font-size="14">${esc((P.headline || '').length > 72 ? P.headline.slice(0, 70) + '…' : P.headline || '')}</text>`);
+    o.push(`<text class="muted" x="48" y="152" font-size="12" opacity="${f2(outro)}">${esc(P.location || '')}${P.location ? ' · ' : ''}Rings read clockwise from ${Math.floor(T0)}: schools inside, roles in the middle, places lived outside${roles.some((r) => r.clipped && inWin(r)) || edu.some((e) => e.clipped) ? '; arcs touching the top edge started earlier' : ''}</text>`);
+    const earlier = [...earlierEdu.map((e) => `${e.school} ${Math.floor(e.t0)}–${Math.floor(e.t1)}`), ...earlierRoles.map((r) => `${r.company} ${Math.floor(r.t0)}–${Math.floor(r.t1)}`)];
+    if (earlier.length) { const line = 'Before ' + Math.floor(T0) + ': ' + earlier.join(' · '); o.push(`<text class="muted" x="48" y="172" font-size="12" opacity="${f2(outro)}">${esc(line.length > 150 ? line.slice(0, 148) + '…' : line)}</text>`); }
+    o.push(`<text x="1152" y="104" font-size="48" font-weight="600" text-anchor="end" letter-spacing="-0.02em">${Math.round(workYears * clamp01((p - 0.1) / 0.68))} yrs</text>`);
+    o.push(`<text class="mono muted" x="1152" y="128" font-size="10.5" letter-spacing="0.12em" text-anchor="end">FULL-TIME${windowed ? ' IN THE LAST ' + YEARS + ' YEARS' : ' EXPERIENCE'}</text>`);
+    o.push(`<text class="soft" x="1152" y="152" font-size="13" text-anchor="end" opacity="${f2(outro)}">${companies.size} compan${companies.size === 1 ? 'y' : 'ies'} · ${shownRoles.length} roles · ${shownEdu.length} school${shownEdu.length === 1 ? '' : 's'}${hasPlaces ? ` · ${places.length} place${places.length === 1 ? '' : 's'}` : ''}</text>`);
+    o.push(`</g>`);
+
+    // legend (bottom-left) and source (bottom-right)
+    o.push(`<g opacity="${f2(outro)}">`);
+    let lx = 48; const ly = 1110;
+    const leg = [['var(--c-work)', 'Full-time roles'], ...(shownRoles.some((r) => r.side) ? [['var(--c-side)', 'Part-time & advisory']] : []), ...(shownEdu.length ? [['var(--c-edu)', 'Education']] : [])];
+    for (const [c, label] of leg) { o.push(`<rect x="${lx}" y="${ly - 10}" width="12" height="12" rx="3" fill="${c}"/><text class="soft" x="${lx + 20}" y="${ly}" font-size="13">${label}</text>`); lx += 20 + label.length * 7.4 + 26; }
+    if (hasPlaces) { o.push(`<text class="mono muted" x="48" y="1148" font-size="10.5" letter-spacing="0.12em">LIVED IN</text>`); let px = 118; const shown = places.filter((pl) => !pl.other); for (const pl of shown) { o.push(`<rect x="${px}" y="1138" width="12" height="12" rx="3" fill="${pl.color}"/><text class="soft" x="${px + 18}" y="1148" font-size="12">${esc(pl.place)}</text>`); px += 18 + pl.place.length * 6.9 + 22; } if (places.some((pl) => pl.other)) o.push(`<rect x="${px}" y="1138" width="12" height="12" rx="3" fill="var(--ink-muted)"/><text class="soft" x="${px + 18}" y="1148" font-size="12">Other</text>`); }
+    o.push(`<text class="mono muted" x="1152" y="1148" font-size="10.5" letter-spacing="0.12em" text-anchor="end">LINKEDIN PROFILE · ${esc((DATA.collectedAt || '').slice(0, 10))}${eduUndated.length ? ` · ${eduUndated.length} UNDATED SCHOOL${eduUndated.length > 1 ? 'S' : ''} NOT DRAWN` : ''}</text>`);
+    o.push(`</g>`);
+
+    // hit targets
+    o.push(`<g id="hits">`);
+    edu.forEach((e, i) => inWin(e) && o.push(`<path class="hit" data-k="e${i}" tabindex="0" d="${sector(R.eduIn, R.eduOut, ang(e.t0), ang(e.t1))}"/>`));
+    roles.forEach((r, i) => { if (!inWin(r)) return; const [r0, r1] = laneR(r.lane); o.push(`<path class="hit" data-k="r${i}" tabindex="0" d="${sector(r0, r1, ang(r.t0), ang(r.t1))}"/>`); });
+    if (hasPlaces) places.forEach((pl, i) => pl.spans.forEach(([ta, tb], j) => o.push(`<path class="hit" data-k="p${i}-${j}" tabindex="0" d="${sector(R_loc[0], R_loc[1], ang(ta), ang(tb))}"/>`)));
+    o.push(`</g></svg>`);
+    const old = stage.querySelector('svg'); const tipEl = document.getElementById('tip'); if (old) old.remove();
+    stage.insertAdjacentHTML('afterbegin', o.join('')); stage.appendChild(tipEl);
+  }
+
+  // ---------- interaction ----------
+  const tipEl = document.getElementById('tip');
+  function describe(k) {
+    if (k[0] === 'e') { const e = edu[+k.slice(1)]; return `<b>${esc(e.school)}</b><br>${esc(e.degree || '')}<div class="m">${fmtRange(e)}</div>`; }
+    if (k[0] === 'r') { const r = roles[+k.slice(1)]; return `<b>${esc(r.title)}</b><br>${esc(r.company)}${r.type ? ' · ' + esc(r.type) : ''}<div class="m">${fmtRange(r)} · ${fmtYrs(r.t1 - r.t0)}${r.location ? ' · ' + esc(r.location) : ''}</div>${r.description ? `<div style="margin-top:6px;opacity:.85">${esc(r.description.slice(0, 160))}${r.description.length > 160 ? '…' : ''}</div>` : ''}`; }
+    const [i, j] = k.slice(1).split('-').map(Number); const pl = places[i]; const [a, b] = pl.spans[j]; return `<b>${esc(pl.place)}</b><div class="m">${Math.floor(a)} – ${b >= NOW - 0.1 ? 'now' : Math.floor(b)} · ${fmtYrs(b - a)}</div>`;
+  }
+  function showTip(k, ev) { tipEl.innerHTML = describe(k); tipEl.style.opacity = 1; const b = stage.getBoundingClientRect(); const x = ev.clientX - b.left, y = ev.clientY - b.top; tipEl.style.left = Math.min(b.width - 300, x + 14) + 'px'; tipEl.style.top = Math.max(0, y - 10) + 'px'; stage.querySelectorAll('.arc').forEach((a) => (a.style.opacity = a.dataset.k === k ? 1 : 0.4)); }
+  function hideTip() { tipEl.style.opacity = 0; stage.querySelectorAll('.arc').forEach((a) => (a.style.opacity = 1)); }
+  stage.addEventListener('mousemove', (e) => { const h = e.target.closest('.hit'); if (h) showTip(h.dataset.k, e); else hideTip(); });
+  stage.addEventListener('mouseleave', hideTip);
+  stage.addEventListener('focusin', (e) => { const h = e.target.closest('.hit'); if (h) { const b = h.getBoundingClientRect(); showTip(h.dataset.k, { clientX: b.left + b.width / 2, clientY: b.top + b.height / 2 }); } });
+  stage.addEventListener('focusout', hideTip);
+
+  // ---------- table twin ----------
+  document.getElementById('table').innerHTML = `<table><thead><tr><th>Kind</th><th>Where</th><th>What</th><th>When</th><th>Length</th><th>Place</th></tr></thead><tbody>` +
+    roles.map((r) => `<tr><td>${r.side ? 'Side role' : 'Role'}${inWin(r) ? '' : ' (before window)'}</td><td>${esc(r.company)}</td><td>${esc(r.title)}${r.type ? ' · ' + esc(r.type) : ''}</td><td>${fmtRange(r)}</td><td>${fmtYrs(r.t1 - r.t0)}</td><td>${esc(r.location || '')}</td></tr>`).join('') +
+    DATA.education.map((e) => `<tr><td>School</td><td>${esc(e.school)}</td><td>${esc(e.degree || '')}</td><td>${e.start ? fmtRange(e) : 'undated'}</td><td>${e.start ? fmtYrs(ym(e.end, !e.endMonthKnown) - ym(e.start)) : ''}</td><td></td></tr>`).join('') + '</tbody></table>';
+
+  // ---------- progress API ----------
+  window.__chart = { setProgress(v) { p = clamp01(v); render(); return p; }, get progress() { return p; }, duration: 12 };
+  if (Q.has('p')) { p = clamp01(+Q.get('p')); render(); }
+  else if (Q.has('static')) { p = 1; render(); }
+  else { p = 0; render(); const t0 = performance.now(); (function tick(n) { p = clamp01((n - t0) / (window.__chart.duration * 1000)); render(); if (p < 1) requestAnimationFrame(tick); })(t0); }
+})();
+</script>
+</body>
+</html>
