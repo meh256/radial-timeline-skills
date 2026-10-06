@@ -81,6 +81,8 @@
   };
   const EMP = /^(Full-time|Part-time|Self-employed|Freelance|Contract|Internship|Apprenticeship|Seasonal|Volunteer)$/i;
   const typeIn = (line) => (line || "").split("·").map((x) => x.trim()).find((x) => EMP.test(x)) || null;
+  const WORKPLACE = /\s*·?\s*\b(On-site|Hybrid|Remote)\b\s*/gi;
+  const placeLine = (t) => { if (!t || /^https?:/.test(t) || t.length >= 60) return null; const v = t.replace(WORKPLACE, "").replace(/\s*·\s*$/, "").trim(); return v || null; };
   const SKIP =
     /^(Show more|Show less|Show all|·|Connect|Message|More|Follow|Pending|Skills:|…see more|See more)$/i;
 
@@ -214,12 +216,7 @@
               title: t[0] || "",
               type: (di > 1 ? typeIn(t[1]) : null) || type,
               ...range,
-              location:
-                t[di + 1] &&
-                !/^https?:/.test(t[di + 1]) &&
-                t[di + 1].length < 60
-                  ? t[di + 1]
-                  : null,
+              location: placeLine(t[di + 1]),
               description:
                 t
                   .slice(di + 2)
@@ -241,12 +238,7 @@
               title: t[0] || "",
               type: typeIn(t[1]),
               ...range,
-              location:
-                t[di + 1] &&
-                !/^https?:/.test(t[di + 1]) &&
-                t[di + 1].length < 60
-                  ? t[di + 1]
-                  : null,
+              location: placeLine(t[di + 1]),
               description:
                 t
                   .slice(di + 2)

@@ -12,7 +12,10 @@ const b64 = readFileSync(src, 'utf8').replace(/LR_B64_BEGIN|LR_B64_END/g, '').re
 let data;
 try { data = JSON.parse(Buffer.from(b64, 'base64').toString('utf8')); } catch (e) { console.error('Could not decode: the base64 block is incomplete or altered. Re-run __lr.export() and copy it again.'); process.exit(1); }
 // repair known collector quirks in older runs: a duration ("5 yrs") stored as an employment type
-for (const e of data.experience || []) for (const r of e.roles || []) if (r.type && /\d+\s*(yrs?|mos?)/.test(r.type)) r.type = null;
+for (const e of data.experience || []) for (const r of e.roles || []) {
+  if (r.type && /\d+\s*(yrs?|mos?)/.test(r.type)) r.type = null;
+  if (r.location) { const v = r.location.replace(/\s*·?\s*\b(On-site|Hybrid|Remote)\b\s*/gi, '').replace(/\s*·\s*$/, '').trim(); r.location = v || null; } // workplace types are not places
+}
 const roles = (data.experience || []).reduce((a, e) => a + (e.roles || []).length, 0);
 if (data.missing?.length) console.warn('WARNING: missing parts:', data.missing.join(', '), '— run the collector on those pages and export again');
 writeFileSync(join(root, 'data', `${id}.json`), JSON.stringify(data));
